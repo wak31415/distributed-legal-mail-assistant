@@ -1,12 +1,31 @@
 import crypten
+import crypten.communicator as comm
 import torch
 import os
 import crypten.communicator as comm
 from argparse import ArgumentParser
 from distributed_launcher import DistributedLauncher
+import logging
+import socket
+import pickle
+
+logging.getLogger().setLevel(logging.INFO)
 
 SERVER = 0
 CLIENT = 1
+
+FRONTEND_HOST = "127.0.0.1"
+FRONTEND_PORT = 9004
+
+def recvall(sock):
+    # Helper function to recv n bytes or return None if EOF is hit
+    data = bytearray()
+    while True:
+        packet = sock.recv(1024)
+        if not packet:
+            break
+        data.extend(packet)
+    return data
 
 def init_environment(args):
     communicator_args = {
@@ -43,11 +62,44 @@ if __name__ == "__main__":
     parser.add_argument("--socket", type=str, default=None)
     args = parser.parse_args()
     init_environment(args)
-    # launcher = DistributedLauncher(args.world_size, args.rank, args.master_ip, args.master_port, args.backend, args.socket, test)
-    # launcher.start()
-    x_enc = crypten.cryptensor([1,2,3], src=CLIENT)
-    y_enc = crypten.cryptensor([4,2,1], src=SERVER)
 
-    z_enc = crypten.where(x_enc < y_enc, 1, 0)
+    # TODO: load weights from `weights.pth`
 
-    print(z_enc.get_plain_text())
+    while True:
+        l = [0, 0, 0]
+        print('hey there again')
+        if comm.get().get_rank() == CLIENT:
+            print("hi")
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                print("hey there")
+                s.bind((FRONTEND_HOST, FRONTEND_PORT))
+                s.listen()
+                conn, addr = s.accept()
+                with conn:
+                    data = recvall(conn)
+                    
+            if data:
+                l = pickle.loads(data)
+                print(l)
+            else:
+                continue
+
+        # TODO: replace this section with weight updating
+        logging.info("x_enc")
+        x_enc = crypten.cryptensor(l, src=CLIENT)
+        logging.info("y_enc")
+        y_enc = crypten.cryptensor([4,2,1], src=SERVER)
+
+        logging.info("z_enc")
+        z_enc = crypten.where(x_enc < y_enc, 1, 0)
+        logging.info("done")
+        # END TODO
+
+        # TODO: client-side send decrypted labels back to frontend
+        if comm.get().get_rank() == CLIENT:
+            # logging.info(z_enc.get_plain_text())
+            labels = pred_enc.get_plain_text()
+            # use socket to send to frontend. IMPORTANT: include receiving code in `client/run.py`
+            pass
+
+        # TODO: save updated weights to `weights.pth`
