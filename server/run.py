@@ -18,22 +18,6 @@ CLIENT = 1
 FRONTEND_HOST = "127.0.0.1"
 FRONTEND_PORT = 9004
 
-class OutputLayer(nn.Module):
-    def __init__(self):
-        super(OutputLayer, self).__init__()
-        self.linear = torch.load('weights.pth')
- 
-    def forward(self, x):
-        logits = self.linear(x)
-        entailment_id = 1
-        contradiction_id = -1
-        entail_contr_logits = logits[..., [contradiction_id, entailment_id]]
-        scores = F.softmax(entail_contr_logits, dim=1)
-        return scores
-
-    def save(self):
-        torch.save(self.linear, "weights.pth")
-
 def recvall(sock):
     # Helper function to recv n bytes or return None if EOF is hit
     data = bytearray()
@@ -58,7 +42,6 @@ def init_environment(args):
         os.environ[key] = str(val)
 
     crypten.init()
-    crypten.common.serial.register_safe_class(OutputLayer)
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -71,16 +54,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     init_environment(args)
 
-    model = OutputLayer()
-
-    # create a dummy input with the same shape as the model input
-    dummy_input = torch.empty((1, 768))
-
-    # construct a CrypTen network with the trained model and dummy_input
-    private_model = crypten.nn.from_pytorch(model, dummy_input)
-
-    # encrypt it
-    private_model.encrypt(src=SERVER)
+    # load a crypten model and encrypt it
+    private_model = crypten.load("model.pth")
+    private_model.encrypt(src=server)
     print("Model successfully encrypted:", private_model.encrypted)
 
     # training params
@@ -140,4 +116,6 @@ if __name__ == "__main__":
             private_model.update_parameters(learning_rate) 
             
             # examine the loss after each epoch
-            # print("Epoch: {0:d} Loss: {1:.4f}".format(i, loss_value.get_plain_text()))"""
+            # print("Epoch: {0:d} Loss: {1:.4f}".format(i, loss_value.get_plain_text()))
+        crypten.save(private_model, "model.pth") # save model
+        """
