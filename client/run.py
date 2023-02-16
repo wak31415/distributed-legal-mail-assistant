@@ -58,6 +58,7 @@ if st.button("Analyze"):
         l = model.dropout(model.pooler(output.hidden_states[-1]))
 
         # pickle the data for sending
+        # TODO: add inference tag
         pickled_l = pickle.dumps(l)
 
         # send to client-side MPC script (server/run.py)
@@ -75,3 +76,5 @@ st.multiselect("Classification",labels, [predicted_labels["labels"][i] for i, sc
 
 with st.expander("View more detailed statistics"):
     st.bar_chart(predicted_labels, x="labels", y="scores")
+
+# if correction, send to server for weight updating with label correction tag
