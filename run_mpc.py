@@ -5,10 +5,11 @@ import torch.nn.functional as F
 import os
 import crypten.communicator as comm
 from argparse import ArgumentParser
-from distributed_launcher import DistributedLauncher
 import logging
 import socket
 import pickle
+from mpc.networking import *
+import settings
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -52,7 +53,10 @@ if __name__ == "__main__":
     parser.add_argument("--backend", type=str, default="gloo")
     parser.add_argument("--socket", type=str, default=None)
     args = parser.parse_args()
+    print("args")
     init_environment(args)
+
+    print("hey")
 
     # load a crypten model and encrypt it
     private_model = crypten.load("model.pth")
@@ -64,37 +68,32 @@ if __name__ == "__main__":
     learning_rate = 1e-3
     num_epochs = 10
 
+    print("hey 2")
+
     while True:
         # TODO: if each iteration is a new msg from the front end, we will need some
         # sort of tag for each msg so that we can know if it's an inference 
         # request or a label correction. Note in latter case, front end will send
         # two tensors: the input, and the target
-        l = torch.tensor([0])
+        data = torch.tensor([0])
         if comm.get().get_rank() == CLIENT:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind((FRONTEND_HOST, FRONTEND_PORT))
-                s.listen()
-                conn, addr = s.accept()
-                with conn:
-                    data = recvall(conn)
-                    
-            if data:
-                l = pickle.loads(data)
-                print(l)
-            else:
+            data = receive(settings.CLIENT_MPC_BACKEND_HOST, settings.CLIENT_MPC_BACKEND_PORT)
+            if data is None:
                 continue
         
         # if inference request...
         # inference with private model
-        x_enc = crypten.cryptensor(l, src=CLIENT)
+        print(data)
+        x_enc = crypten.cryptensor(data, src=CLIENT)
         private_model.eval()
         pred_enc = private_model(x_enc)
 
         # TODO: client-side send decrypted labels back to frontend
         if comm.get().get_rank() == CLIENT:
-            labels = pred_enc.get_plain_text()
+            scores = pred_enc.get_plain_text()
             # use socket to send to frontend. IMPORTANT: include receiving code in `client/run.py`
-            pass
+            
+            send(scores, settings.CLIENT_MPC_BACKEND_HOST, settings.CLIENT_MPC_BACKEND_PORT)
 
         # if label correction
         # below is training code

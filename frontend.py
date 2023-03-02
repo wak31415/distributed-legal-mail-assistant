@@ -9,7 +9,12 @@ from captum.attr import LayerIntegratedGradients
 import tokenizers
 import torch
 
+import pickle
+import socket
+
 from argparse import ArgumentParser
+import settings
+from mpc.networking import send, receive
 
 @st.cache
 def get_args():
@@ -47,6 +52,7 @@ with st.sidebar:
     labels = get_labels(text)
 
 email = st.text_area("Email to analyze")
+predicted_labels = {"labels": [], "scores": []}
 
 if st.button("Analyze"):
     with st.spinner("Analyzing..."):
@@ -57,17 +63,12 @@ if st.button("Analyze"):
             output = model(**features)
         l = model.dropout(model.pooler(output.hidden_states[-1]))
 
-        # pickle the data for sending
-        # TODO: add inference tag
-        pickled_l = pickle.dumps(l)
+        # send data to MPC BACKEND
+        send(l, settings.CLIENT_MPC_BACKEND_HOST, settings.CLIENT_MPC_BACKEND_PORT)
 
-        # send to client-side MPC script (server/run.py)
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect((HOST, PORT))
-            s.sendall(pickled_l)
-
-        # front end should receive output of MPC here - assume this is a tensor called scores
-
+        # receive prediction from MPC backend
+        scores = receive(settings.CLIENT_MPC_BACKEND_HOST, settings.CLIENT_MPC_BACKEND_PORT)
+        
         scores = scores[..., 1]
         scores = scores.tolist() # turn into a python list      
         predicted_labels = {"labels": labels, "scores": scores}
