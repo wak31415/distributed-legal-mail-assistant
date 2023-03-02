@@ -1,13 +1,16 @@
 import streamlit as st
+from streamlit_modal import Modal
+import streamlit.components.v1 as components
 
 import syft as sy
 from syft.core.adp.data_subject import DataSubject
 from syft.core.tensor.smpc.mpc_tensor import MPCTensor
-import transformers
+from transformers import pipeline
 from captum.attr import LayerIntegratedGradients
 import plotly.express as px 
 import tokenizers
 import torch
+
 
 from argparse import ArgumentParser
 
@@ -20,7 +23,7 @@ def get_args():
 
 @st.cache(hash_funcs={tokenizers.Tokenizer: lambda _: None}, allow_output_mutation=True)
 def get_model():
-    return transformers.pipeline("zero-shot-classification",model="cross-encoder/nli-deberta-v3-small", device=0)
+    return pipeline("zero-shot-classification",model="cross-encoder/nli-deberta-v3-small", device=0)
 
 @st.cache
 def get_labels(text):
@@ -55,24 +58,49 @@ args = get_args()
 model = get_model()
 predicted_labels = {"labels":[], "scores":[]}
 
+deletion_request_modal = Modal("Data Deletion Request detected", key='abc')
 
 def model_output(inputs):
     return model(inputs)[0]
 
 st.title("Private Smart Email Assistant")
-st.write(f"Connected to server on {args.server_ip}:{args.server_port}")
+# st.write(f"Connected to server on {args.server_ip}:{args.server_port}")
 
 with st.sidebar:
-    text = st.text_area("List of classification labels, one per line")
+    text = st.text_area("List of classification labels, one per line", value=
+"""erasure
+rectification
+claim withdrawal
+scheduling
+urgent""")
     labels = get_labels(text)
 
 email = st.text_area("Email to analyze")
 
 if st.button("Analyze"):
     with st.spinner("Analyzing..."):
-        predicted_labels = model(email, labels, multi_label=True, )
+        predicted_labels = model(email, labels, multi_label=True)
 
-st.multiselect("Classification",labels, [predicted_labels["labels"][i] for i, score in enumerate(predicted_labels["scores"]) if score > 0.4])
+col1, col2 = st.columns(2)
+
+with col1:
+    if "urgent" in predicted_labels["labels"]:
+        i = predicted_labels["labels"].index("urgent")
+        urgency_score = predicted_labels["scores"][i]
+        st.write("Urgency")
+        st.progress(int(urgency_score*100))
+
+with col2:
+    if "erasure" in predicted_labels["labels"]:
+        i = predicted_labels["labels"].index("erasure")
+        erasure_score = predicted_labels["scores"][i]
+        if erasure_score > 0.4:
+            st.warning("Data erasure request detected! You have one week to address this, but don't worry, I'll remind you so you don't forget.", icon="⚠️")
+
+st.multiselect("Classification",labels, [predicted_labels["labels"][i] for i, score in enumerate(predicted_labels["scores"]) if score > 0.5])
 
 with st.expander("View more detailed statistics"):
-    st.bar_chart(predicted_labels, x="labels", y="scores")
+    l = [predicted_labels["labels"][i] for i, score in enumerate(predicted_labels["scores"]) if score > 0.3]
+    s = [score for i, score in enumerate(predicted_labels["scores"]) if score > 0.3]
+
+    st.bar_chart({"labels": l, "scores": s}, x="labels", y="scores")
