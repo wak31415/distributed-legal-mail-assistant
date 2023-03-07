@@ -15,6 +15,7 @@ import socket
 from argparse import ArgumentParser
 import settings
 from mpc.networking import send, receive
+import time
 
 @st.cache
 def get_args():
@@ -63,11 +64,15 @@ if st.button("Analyze"):
             output = model(**features)
         l = model.dropout(model.pooler(output.hidden_states[-1]))
 
+        # first, let the MPC backend know how many different labels there are
+        send(len(labels), settings.CLIENT_MPC_BACKEND_HOST, settings.CLIENT_MPC_BACKEND_PORT)
+        send(len(labels), settings.HOST_MPC_BACKEND_HOST, settings.HOST_MPC_BACKEND_PORT)
+        time.sleep(0.05)
         # send data to MPC BACKEND
         send(l, settings.CLIENT_MPC_BACKEND_HOST, settings.CLIENT_MPC_BACKEND_PORT)
 
         # receive prediction from MPC backend
-        scores = receive(settings.CLIENT_MPC_BACKEND_HOST, settings.CLIENT_MPC_BACKEND_PORT)
+        scores = receive(settings.CLIENT_MPC_BACKEND_HOST, settings.CLIENT_MPC_BACKEND_RETURN_PORT)
         
         scores = scores[..., 1]
         scores = scores.tolist() # turn into a python list      

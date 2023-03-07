@@ -1,5 +1,6 @@
 import socket
 import pickle
+import logging
 
 def send(data, host, port):
     pickled_data = pickle.dumps(data)
@@ -19,18 +20,18 @@ def recvall(sock):
     return data
 
 def receive(host, port):
-    print("waiting for incoming")
+    logging.info("Waiting for incoming")
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((host, port))
-        print("Listening...")
+        logging.info("Listening...")
         s.listen()
         conn, addr = s.accept()
-        print("Connection accepted. Receiving...")
+        logging.info("Connection accepted. Receiving...")
         with conn:
             data = recvall(conn)
             
     if data:
         data = pickle.loads(data)
 
-    print("Done.")
+    logging.info("Done.")
     return data

@@ -1,9 +1,13 @@
 # code to generate weights.pth
 import torch
 from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from torch import nn
+import torch.nn.functional as F
+import crypten
 
-model = AutoModelForSequenceClassification.from_pretrained('cross-encoder/nli-deberta-v3-small', output_hidden_states=True)
-torch.save(model.classifier, "weights.pth")
+# model = AutoModelForSequenceClassification.from_pretrained('cross-encoder/nli-deberta-v3-small', output_hidden_states=True)
+# torch.save(model.classifier, "weights.pth")
 
 # code to generate model.pth
 class OutputLayer(nn.Module):
@@ -19,20 +23,21 @@ class OutputLayer(nn.Module):
         scores = F.softmax(entail_contr_logits, dim=1)
         return scores
 
-crypten.init()
-crypten.common.serial.register_safe_class(OutputLayer)
+if __name__ == "__main__":
+    crypten.init()
+    crypten.common.serial.register_safe_class(OutputLayer)
 
-SERVER = 0
+    SERVER = 0
 
-plaintext_model = OutputLayer()
+    plaintext_model = OutputLayer()
 
-# create a dummy input with the same shape as the model input
-dummy_input = torch.empty((1, 768))
+    # create a dummy input with the same shape as the model input
+    dummy_input = torch.empty((1, 768))
 
-# construct a crypten network with the trained model and dummy_input
-private_model = crypten.nn.from_pytorch(plaintext_model, dummy_input)
+    # construct a crypten network with the trained model and dummy_input
+    private_model = crypten.nn.from_pytorch(plaintext_model, dummy_input)
 
-# encrypt the CrypTen network
-private_model.encrypt(src=SERVER)
-print("Model successfully encrypted:", private_model.encrypted)
-crypten.save(private_model, "model.pth")
+    # encrypt the CrypTen network
+    # private_model.encrypt(src=SERVER)
+    # print("Model successfully encrypted:", private_model.encrypted)
+    crypten.save(private_model, "model.pth")
