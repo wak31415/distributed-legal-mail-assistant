@@ -17,6 +17,16 @@ import settings
 from mpc.networking import send, receive
 import time
 
+if 'labels_changed' not in st.session_state:
+    st.session_state.labels_changed = False
+
+if 'done_analyzing' not in st.session_state:
+    st.session_state.done_analyzing = False
+
+if 'predicted_labels' not in st.session_state:
+    predicted_labels = {"labels": [], "scores": []}
+    st.session_state.classified_label_list = []
+
 @st.cache
 def get_args():
     """Get argument parser.
@@ -38,6 +48,11 @@ def get_labels(text):
     labels = [x.strip() for x in labels]
     return labels
 
+def invoke_training_step():
+    print("Predicted:",st.session_state.classified_label_list)
+    print("Updated:",st.session_state.label_selector)
+    st.session_state.labels_changed = True
+
 sy.logger.remove()
 
 args = get_args()
@@ -48,14 +63,14 @@ st.write(f"Connected to server on {args.server_ip}:{args.server_port}")
 
 with st.sidebar:
     text = st.text_area("List of classification labels, one per line",
-                        placeholder="e.g.:\nerasure\ncancellation\nrectification\nurgent\n...",
+                        placeholder="e.g.:\nerasure\nclaim cancellation\nrectification\nurgent\n...",
                         height=200)
     labels = get_labels(text)
 
 email = st.text_area("Email to analyze")
-predicted_labels = {"labels": [], "scores": []}
 
 if st.button("Analyze"):
+    st.session_state.done_analyzing = False
     with st.spinner("Analyzing..."):
         # extract output of last hidden layer of pretrained model
         features = tokenizer([email] * len(labels), [f'This example is {label}.' for label in labels],  padding=True, truncation=True, return_tensors="pt")
@@ -78,9 +93,23 @@ if st.button("Analyze"):
         scores = scores.tolist() # turn into a python list      
         predicted_labels = {"labels": labels, "scores": scores}
 
-st.multiselect("Classification",labels, [predicted_labels["labels"][i] for i, score in enumerate(predicted_labels["scores"]) if score > 0.4])
+        st.session_state.predicted_labels = predicted_labels
+        st.session_state.classified_label_list = [predicted_labels["labels"][i] for i, score in enumerate(predicted_labels["scores"]) if score > 0.4]
+    st.session_state.done_analyzing = True
 
-with st.expander("View more detailed statistics"):
-    st.bar_chart(predicted_labels, x="labels", y="scores")
+if st.session_state.done_analyzing:
+    label_selector = st.multiselect("Classification", labels, 
+                                    st.session_state.classified_label_list,
+                                    key="label_selector")
+
+    with st.expander("View more detailed statistics"):
+        st.bar_chart(st.session_state.predicted_labels, x="labels", y="scores")
+
+    if st.button("Confirm or Update Labels"):
+        st.text(f"Predicted: {st.session_state.classified_label_list}")
+        st.text(f"Updated: {st.session_state.label_selector}")
 
 # if correction, send to server for weight updating with label correction tag
+# if st.session_state.labels_changed:
+#     st.info("Updating model weights")
+#     st.session_state.labels_changed = False
