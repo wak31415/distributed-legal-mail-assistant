@@ -11,6 +11,7 @@ import pickle
 from mpc.networking import *
 from mpc.model import OutputLayer
 import settings
+from copy import copy
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -56,22 +57,20 @@ if __name__ == "__main__":
     parser.add_argument("--backend", type=str, default="gloo")
     parser.add_argument("--socket", type=str, default=None)
     args = parser.parse_args()
-    print("args")
     init_environment(args)
-
-    print("hey")
 
     # load a crypten model and encrypt it
     private_model = crypten.load("model.pth")
-    private_model.encrypt(src=SERVER)
-    print("Model successfully encrypted:", private_model.encrypted)
+    private_model.train()
 
     # training params
     loss = crypten.nn.BCEWithLogitsLoss()
-    learning_rate = 1e-3
+    learning_rate = 1e-1 # high for illustrative testing purposes
     num_epochs = 10
 
     while True:
+        private_model.encrypt(src=SERVER)
+        print("Model successfully encrypted:", private_model.encrypted)
         # TODO: if each iteration is a new msg from the front end, we will need some
         # sort of tag for each msg so that we can know if it's an inference 
         # request or a label correction. Note in latter case, front end will send
@@ -100,35 +99,39 @@ if __name__ == "__main__":
         # inference with private model
         print(data.shape)
         x_enc = crypten.cryptensor(data, src=CLIENT)
-        private_model.eval()
         pred_enc = private_model(x_enc)
 
         # client-side send decrypted labels back to frontend
-        scores = pred_enc.get_plain_text()
+        scores = copy(pred_enc).get_plain_text()
         # use socket to send to frontend. IMPORTANT: include receiving code in `client/run.py`
         if comm.get().get_rank() == CLIENT:
             send(scores, settings.CLIENT_MPC_BACKEND_HOST, settings.CLIENT_MPC_BACKEND_RETURN_PORT)
 
-        # if label correction
-        # below is training code
-        # x_enc = ???
-        # target_enc = ???
-        """
-        private_model.train() # Change to training mode
+        y_true = torch.zeros((num_categories, 2))
+        if comm.get().get_rank() == CLIENT:
+            y_true = receive(settings.CLIENT_MPC_BACKEND_HOST, settings.CLIENT_MPC_BACKEND_PORT)
+            print(y_true)
+
+        y_true_enc = crypten.cryptensor(y_true, src=CLIENT)
+        print(copy(pred_enc).get_plain_text())
+        
         for _ in range(num_epochs):
-            pred_enc = private_model(x_enc)
-            loss_value = loss(output, target_enc)
-            
             # set gradients to zero
-            private_model.zero_grad()
-
-            # perform backward pass
-            loss_value.backward()
-
-            # update parameters
-            private_model.update_parameters(learning_rate) 
             
-            # examine the loss after each epoch
-            # print("Epoch: {0:d} Loss: {1:.4f}".format(i, loss_value.get_plain_text()))
-        crypten.save(private_model, "model.pth") # save model
-        """
+            # perform backward pass
+            loss_ = loss(pred_enc, y_true_enc)
+            private_model.zero_grad()
+            loss_.backward()
+            
+            # update parameters
+            private_model.update_parameters(learning_rate)
+            
+            logging.info("Loss: {0:.4f}".format(loss_.get_plain_text()))
+        
+        # save updated parameters
+        private_model.decrypt()
+        logging.info("Successfully decrypted model")
+        
+        if comm.get().get_rank() == SERVER:
+            torch.save(private_model, "model.pth")
+            logging.info("Saved updated model")

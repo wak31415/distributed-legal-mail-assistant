@@ -23,9 +23,14 @@ if 'labels_changed' not in st.session_state:
 if 'done_analyzing' not in st.session_state:
     st.session_state.done_analyzing = False
 
-if 'predicted_labels' not in st.session_state:
-    predicted_labels = {"labels": [], "scores": []}
+if 'classified_label_list' not in st.session_state:
     st.session_state.classified_label_list = []
+
+if 'label_selector' not in st.session_state:
+    st.session_state.label_selector = []
+
+if 'predicted_labels' not in st.session_state:
+    st.session_state.predicted_labels = {}
 
 @st.cache
 def get_args():
@@ -68,9 +73,14 @@ with st.sidebar:
     labels = get_labels(text)
 
 email = st.text_area("Email to analyze")
+label_selector = st.empty()
 
 if st.button("Analyze"):
+    label_selector.empty()
     st.session_state.done_analyzing = False
+    st.session_state.classified_label_list = []
+    st.session_state.predicted_labels = {}
+    # st.session_state.label_selector = st.empty()
     with st.spinner("Analyzing..."):
         # extract output of last hidden layer of pretrained model
         features = tokenizer([email] * len(labels), [f'This example is {label}.' for label in labels],  padding=True, truncation=True, return_tensors="pt")
@@ -95,19 +105,31 @@ if st.button("Analyze"):
 
         st.session_state.predicted_labels = predicted_labels
         st.session_state.classified_label_list = [predicted_labels["labels"][i] for i, score in enumerate(predicted_labels["scores"]) if score > 0.4]
+
     st.session_state.done_analyzing = True
 
 if st.session_state.done_analyzing:
-    label_selector = st.multiselect("Classification", labels, 
-                                    st.session_state.classified_label_list,
-                                    key="label_selector")
+    st.text(st.session_state.classified_label_list)
+    # label_selector.empty()
+    out = label_selector.multiselect("Classification", labels, 
+                               st.session_state.classified_label_list)
+    st.session_state.label_selector = out
 
     with st.expander("View more detailed statistics"):
         st.bar_chart(st.session_state.predicted_labels, x="labels", y="scores")
 
     if st.button("Confirm or Update Labels"):
+        indices = list(map(lambda x: labels.index(x), st.session_state.label_selector))
+        
+        updated_output_tensor = torch.tensor([1.0, 0.0]).repeat(len(labels), 1)
+        updated_output_tensor[indices] = torch.tensor([0.0, 1.0])
+
+        send(updated_output_tensor, settings.CLIENT_MPC_BACKEND_HOST, settings.CLIENT_MPC_BACKEND_PORT)
+
+        st.text(updated_output_tensor)
         st.text(f"Predicted: {st.session_state.classified_label_list}")
         st.text(f"Updated: {st.session_state.label_selector}")
+        st.session_state.done_analyzing = False
 
 # if correction, send to server for weight updating with label correction tag
 # if st.session_state.labels_changed:
