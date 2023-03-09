@@ -71,10 +71,7 @@ if __name__ == "__main__":
     while True:
         private_model.encrypt(src=SERVER)
         print("Model successfully encrypted:", private_model.encrypted)
-        # TODO: if each iteration is a new msg from the front end, we will need some
-        # sort of tag for each msg so that we can know if it's an inference 
-        # request or a label correction. Note in latter case, front end will send
-        # two tensors: the input, and the target
+
         if comm.get().get_rank() == SERVER:
             num_categories = receive(settings.HOST_MPC_BACKEND_HOST, settings.HOST_MPC_BACKEND_PORT)
             if num_categories is None:
@@ -86,6 +83,8 @@ if __name__ == "__main__":
                 continue
             logging.info(f"Received data from frontend: '{num_categories}'")
 
+        # server needs a tensor in the shape of the data received by the client
+        # to perform the MPC
         data = torch.zeros((num_categories, 768))
 
         if comm.get().get_rank() == CLIENT:
@@ -94,33 +93,30 @@ if __name__ == "__main__":
                 continue
             logging.info(f"Received tensor from frontend: {data}")
 
-        
-        # if inference request...
-        # inference with private model
+        # inference with private input and model
         print(data.shape)
         x_enc = crypten.cryptensor(data, src=CLIENT)
         pred_enc = private_model(x_enc)
 
         # client-side send decrypted labels back to frontend
         scores = copy(pred_enc).get_plain_text()
-        # use socket to send to frontend. IMPORTANT: include receiving code in `client/run.py`
         if comm.get().get_rank() == CLIENT:
             send(scores, settings.CLIENT_MPC_BACKEND_HOST, settings.CLIENT_MPC_BACKEND_RETURN_PORT)
 
+        # get confirmed/updated labels from frontend
         y_true = torch.zeros((num_categories, 2))
         if comm.get().get_rank() == CLIENT:
             y_true = receive(settings.CLIENT_MPC_BACKEND_HOST, settings.CLIENT_MPC_BACKEND_PORT)
             print(y_true)
-
+        
         y_true_enc = crypten.cryptensor(y_true, src=CLIENT)
         print(copy(pred_enc).get_plain_text())
         
-        for _ in range(num_epochs):
-            # set gradients to zero
-            
+        # train with confirmed/updated labels
+        for _ in range(num_epochs):    
             # perform backward pass
             loss_ = loss(pred_enc, y_true_enc)
-            private_model.zero_grad()
+            private_model.zero_grad() # set gradients to zero
             loss_.backward()
             
             # update parameters
@@ -131,7 +127,6 @@ if __name__ == "__main__":
         # save updated parameters
         private_model.decrypt()
         logging.info("Successfully decrypted model")
-        
         if comm.get().get_rank() == SERVER:
             torch.save(private_model, "model.pth")
             logging.info("Saved updated model")
