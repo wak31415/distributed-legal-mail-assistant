@@ -32,15 +32,6 @@ if 'label_selector' not in st.session_state:
 if 'predicted_labels' not in st.session_state:
     st.session_state.predicted_labels = {}
 
-@st.cache
-def get_args():
-    """Get argument parser.
-    """
-    parser = ArgumentParser()
-    parser.add_argument('--server-ip', type=str)
-    parser.add_argument('--server-port', type=int)
-    return parser.parse_args()
-
 @st.cache(hash_funcs={tokenizers.Tokenizer: lambda _: None}, allow_output_mutation=True)
 def get_model_and_tokenizer():
     model = AutoModelForSequenceClassification.from_pretrained('cross-encoder/nli-deberta-v3-small', output_hidden_states=True)
@@ -60,11 +51,9 @@ def invoke_training_step():
 
 sy.logger.remove()
 
-args = get_args()
 model, tokenizer = get_model_and_tokenizer()
 
 st.title("Private Smart Email Assistant")
-st.write(f"Connected to server on {args.server_ip}:{args.server_port}")
 
 with st.sidebar:
     text = st.text_area("List of classification labels, one per line",
