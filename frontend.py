@@ -98,27 +98,28 @@ if st.button("Analyze"):
     st.session_state.done_analyzing = True
 
 if st.session_state.done_analyzing:
-    st.text(st.session_state.classified_label_list)
-    # label_selector.empty()
-    out = label_selector.multiselect("Classification", labels, 
-                               st.session_state.classified_label_list)
-    st.session_state.label_selector = out
+    with st.form(key='results'):
+        st.text(st.session_state.classified_label_list)
+        # label_selector.empty()
+        out = label_selector.multiselect("Classification", labels, 
+                                    st.session_state.classified_label_list)
+        st.session_state.label_selector = out
 
-    with st.expander("View more detailed statistics"):
-        st.bar_chart(st.session_state.predicted_labels, x="labels", y="scores")
+        with st.expander("View more detailed statistics"):
+            st.bar_chart(st.session_state.predicted_labels, x="labels", y="scores")
 
-    if st.button("Confirm or Update Labels"):
-        indices = list(map(lambda x: labels.index(x), st.session_state.label_selector))
-        
-        updated_output_tensor = torch.tensor([1.0, 0.0]).repeat(len(labels), 1)
-        updated_output_tensor[indices] = torch.tensor([0.0, 1.0])
+        if st.form_submit_button(label="Confirm or Update Labels"):
+            indices = list(map(lambda x: labels.index(x), st.session_state.label_selector))
+            
+            updated_output_tensor = torch.tensor([1.0, 0.0]).repeat(len(labels), 1)
+            updated_output_tensor[indices] = torch.tensor([0.0, 1.0])
 
-        send(updated_output_tensor, settings.CLIENT_MPC_BACKEND_HOST, settings.CLIENT_MPC_BACKEND_PORT)
+            send(updated_output_tensor, settings.CLIENT_MPC_BACKEND_HOST, settings.CLIENT_MPC_BACKEND_PORT)
 
-        st.text(updated_output_tensor)
-        st.text(f"Predicted: {st.session_state.classified_label_list}")
-        st.text(f"Updated: {st.session_state.label_selector}")
-        st.session_state.done_analyzing = False
+            st.text(updated_output_tensor)
+            st.text(f"Predicted: {st.session_state.classified_label_list}")
+            st.text(f"Updated: {st.session_state.label_selector}")
+            st.session_state.done_analyzing = False
 
 # if correction, send to server for weight updating with label correction tag
 # if st.session_state.labels_changed:

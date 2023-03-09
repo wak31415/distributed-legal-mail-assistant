@@ -1,4 +1,3 @@
-# code to generate weights.pth
 import torch
 from transformers import AutoTokenizer
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
@@ -6,6 +5,7 @@ from torch import nn
 import torch.nn.functional as F
 import crypten
 
+# code to generate weights.pth
 # model = AutoModelForSequenceClassification.from_pretrained('cross-encoder/nli-deberta-v3-small', output_hidden_states=True)
 # torch.save(model.classifier, "weights.pth")
 
@@ -27,8 +27,6 @@ if __name__ == "__main__":
     crypten.init()
     crypten.common.serial.register_safe_class(OutputLayer)
 
-    SERVER = 0
-
     plaintext_model = OutputLayer()
 
     # create a dummy input with the same shape as the model input
@@ -37,7 +35,4 @@ if __name__ == "__main__":
     # construct a crypten network with the trained model and dummy_input
     private_model = crypten.nn.from_pytorch(plaintext_model, dummy_input)
 
-    # encrypt the CrypTen network
-    # private_model.encrypt(src=SERVER)
-    # print("Model successfully encrypted:", private_model.encrypted)
     crypten.save(private_model, "model.pth")
